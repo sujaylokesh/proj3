@@ -18,13 +18,11 @@ def convert_and_pad_token_sequence(token_vocab: Union[Vocabulary, BpeVocabulary]
         -> Tuple[np.ndarray, np.ndarray]:
     """
     Tensorise token sequence with padding; returning a mask for used elements as well.
-
     Args:
         token_vocab: Vocabulary or BPE encoder to use. We assume that token_vocab[0] is the padding symbol.
         token_sequence: List of tokens in string form
         output_tensor_size: Size of the resulting tensor (i.e., length up which we pad / down to which we truncate.
         pad_from_left: Indicate if we are padding/truncating on the left side of string. [Default: False]
-
     Returns:
         Pair of numpy arrays. First is the actual tensorised token sequence, the second is a masking tensor
         that is 1.0 for those token indices that are actually used.
@@ -111,7 +109,6 @@ def pool_sequence_embedding(pool_mode: str,
     """
     Takes a batch of sequences of token embeddings and applies a pooling function,
     returning one representation for each sequence.
-
     Args:
         pool_mode: The pooling mode, one of "mean", "max", "weighted_mean". For
          the latter, a weight network is introduced that computes a score (from [0,1])
