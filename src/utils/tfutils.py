@@ -105,7 +105,8 @@ def get_activation(activation_fun: Optional[str]):
 def pool_sequence_embedding(pool_mode: str,
                             sequence_token_embeddings: tf.Tensor,
                             sequence_lengths: tf.Tensor,
-                            sequence_token_masks: tf.Tensor) -> tf.Tensor:
+                            sequence_token_masks: tf.Tensor,
+                            is_train: bool) -> tf.Tensor:
     """
     Takes a batch of sequences of token embeddings and applies a pooling function,
     returning one representation for each sequence.
@@ -124,23 +125,46 @@ def pool_sequence_embedding(pool_mode: str,
         A tensor of shape [B, D], containing the pooled representation for each
         sequence.
     """
-    if pool_mode == 'mean':
+    def mean_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks):
         seq_token_embeddings_masked = \
             sequence_token_embeddings * tf.expand_dims(sequence_token_masks, axis=-1)  # B x T x D
         seq_token_embeddings_sum = tf.reduce_sum(seq_token_embeddings_masked, axis=1)  # B x D
         sequence_lengths = tf.expand_dims(tf.cast(sequence_lengths, dtype=tf.float32), axis=-1)  # B x 1
-        return seq_token_embeddings_sum / sequence_lengths
-    elif pool_mode == 'max':
+        return seq_token_embeddings_sum / sequence_lengths # B x D
+
+    def max_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks):
         sequence_token_masks = -BIG_NUMBER * (1 - sequence_token_masks)  # B x T
         sequence_token_masks = tf.expand_dims(sequence_token_masks, axis=-1)  # B x T x 1
         return tf.reduce_max(sequence_token_embeddings + sequence_token_masks, axis=1)
-    elif pool_mode == 'weighted_mean':
-        token_weights = tf.layers.dense(sequence_token_embeddings,
+
+        if pool_mode == 'mean':
+            return mean_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks)
+        elif pool_mode == 'max':
+            return max_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks)
+        elif pool_mode == 'weighted_mean':
+            token_weights = tf.layers.dense(sequence_token_embeddings,
                                         units=1,
                                         activation=tf.sigmoid,
                                         use_bias=False)  # B x T x 1
-        token_weights *= tf.expand_dims(sequence_token_masks, axis=-1)  # B x T x 1
-        seq_embedding_weighted_sum = tf.reduce_sum(sequence_token_embeddings * token_weights, axis=1)  # B x D
-        return seq_embedding_weighted_sum / (tf.reduce_sum(token_weights, axis=1) + 1e-8)  # B x D
-    else:
-        raise ValueError("Unknown sequence pool mode '%s'!" % pool_mode)
+            token_weights *= tf.expand_dims(sequence_token_masks, axis=-1)  # B x T x 1
+            seq_embedding_weighted_sum = tf.reduce_sum(sequence_token_embeddings * token_weights, axis=1)  # B x D
+            return seq_embedding_weighted_sum / (tf.reduce_sum(token_weights, axis=1) + 1e-8)  # B x D
+        elif pool_mode == 'concat':
+            seq_token_embeddings_masked = \
+            sequence_token_embeddings * tf.expand_dims(sequence_token_masks, axis=-1)  # B x T x D
+
+            last_hidden_states = seq_token_embeddings_masked[:, -1]
+
+            # squeeze to correct dim if training
+            if is_train:
+                last_hidden_states = tf.squeeze(last_hidden_states)
+
+            mxp = max_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks)  # B x D
+            mnp = mean_pool(sequence_token_embeddings, sequence_lengths, sequence_token_masks) # B x D
+
+            return tf.concat( [ last_hidden_states,  # last hidden states, squeezed from B x 1 x D to B x D
+                                mxp,                 # max pool, B x D
+                                mnp                  # mean pool, B x D
+                            ] , axis=-1)           # concat pool, B x 3*D (refer to note above about increased seq embedding size)
+        else:
+            raise ValueError("Unknown sequence pool mode '%s'!" % pool_mode)
