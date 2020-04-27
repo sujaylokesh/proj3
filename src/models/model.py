@@ -258,6 +258,7 @@ class Model(ABC):
                                                                               hyperparameters=self.hyperparameters,
                                                                               metadata=language_metadata)
                     language_encoders.append(self.__code_encoders[language].make_model(is_train=is_train))
+            print(language_encoders)
             self.ops['code_representations'] = tf.concat(language_encoders, axis=0)
         with tf.variable_scope("query_encoder"):
             self.__query_encoder = self.__query_encoder_type(label="query",
